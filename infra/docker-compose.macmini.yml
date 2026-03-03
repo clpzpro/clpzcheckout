@@ -1,0 +1,84 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpay_auth
+      POSTGRES_USER: cpay
+      POSTGRES_PASSWORD: ${CPAY_DB_PASSWORD}
+    volumes:
+      - cpay_auth_data:/var/lib/postgresql/data
+      - ./db/000_auth_schema.sql:/docker-entrypoint-initdb.d/000_auth_schema.sql:ro
+
+  core-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpay_core
+      POSTGRES_USER: cpay
+      POSTGRES_PASSWORD: ${CPAY_DB_PASSWORD}
+    volumes:
+      - cpay_core_data:/var/lib/postgresql/data
+      - ./db/000_core_schema.sql:/docker-entrypoint-initdb.d/000_core_schema.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      APP_ORIGIN: https://${CPAY_PUBLIC_DOMAIN}
+      AUTH_DB_URL: postgresql://cpay:${CPAY_DB_PASSWORD}@auth-db:5432/cpay_auth
+      CORE_DB_URL: postgresql://cpay:${CPAY_DB_PASSWORD}@core-db:5432/cpay_core
+      SUPABASE_JWKS_URL: ${SUPABASE_JWKS_URL}
+      SUPABASE_ISSUER: ${SUPABASE_ISSUER}
+      SUPABASE_AUDIENCE: ${SUPABASE_AUDIENCE}
+    depends_on:
+      - auth-db
+      - core-db
+      - redis
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_URL: /api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      NEXT_PUBLIC_API_URL: /api
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - web
+      - api
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    depends_on:
+      - caddy
+
+volumes:
+  cpay_auth_data:
+  cpay_core_data:

@@ -1,0 +1,39 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    container_name: cpay-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpay_auth
+      POSTGRES_USER: cpay
+      POSTGRES_PASSWORD: cpay_dev_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - cpay_auth_data:/var/lib/postgresql/data
+      - ./db/000_auth_schema.sql:/docker-entrypoint-initdb.d/000_auth_schema.sql:ro
+
+  core-db:
+    image: postgres:16-alpine
+    container_name: cpay-core-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cpay_core
+      POSTGRES_USER: cpay
+      POSTGRES_PASSWORD: cpay_dev_password
+    ports:
+      - "5434:5432"
+    volumes:
+      - cpay_core_data:/var/lib/postgresql/data
+      - ./db/000_core_schema.sql:/docker-entrypoint-initdb.d/000_core_schema.sql:ro
+
+  redis:
+    image: redis:7-alpine
+    container_name: cpay-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  cpay_auth_data:
+  cpay_core_data:

@@ -1,0 +1,26 @@
+{
+  "name": "cpay",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @cpay/web run dev",
+    "dev:api": "npm --workspace @cpay/api run dev",
+    "dev": "concurrently -n WEB,API \"npm run dev:web\" \"npm run dev:api\"",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "npm run lint --workspaces",
+    "macmini:deploy": "bash scripts/macmini/deploy.sh",
+    "macmini:status": "bash scripts/macmini/status.sh",
+    "macmini:logs": "bash scripts/macmini/logs.sh",
+    "macmini:down": "bash scripts/macmini/down.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.8.2"
+  }
+}
