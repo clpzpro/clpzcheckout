@@ -5,16 +5,15 @@ import type { GatewayProvider } from "@cpay/contracts";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 
 interface CreateCheckoutFormProps {
-  accessToken: string;
   onCreated: () => Promise<void>;
 }
 
-export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFormProps) {
+export function CreateCheckoutForm({ onCreated }: CreateCheckoutFormProps) {
   const [name, setName] = useState("Checkout Principal");
   const [slug, setSlug] = useState("checkout-principal");
   const [gatewayProvider] = useState<GatewayProvider>("none");
-  const [primaryColor, setPrimaryColor] = useState("#2FD4A8");
-  const [accentColor, setAccentColor] = useState("#0A1628");
+  const [primaryColor, setPrimaryColor] = useState("#0ea5e9");
+  const [accentColor, setAccentColor] = useState("#0f172a");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,9 +25,9 @@ export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFor
     try {
       const response = await fetch(`${getApiBaseUrl()}/v1/checkouts`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           name,
@@ -42,6 +41,10 @@ export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFor
           }
         })
       });
+
+      if (response.status === 401) {
+        throw new Error("Sessao expirada. Faca login novamente.");
+      }
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({ message: "Erro desconhecido" }));
@@ -58,8 +61,9 @@ export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFor
   }
 
   return (
-    <form onSubmit={createCheckout}>
+    <form onSubmit={createCheckout} className="checkout-form">
       <h2>Novo checkout</h2>
+      <p className="subtle">Template padrao com variacao de cor e identidade.</p>
 
       <label className="field">
         Nome
@@ -68,7 +72,19 @@ export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFor
 
       <label className="field">
         Slug
-        <input className="input" value={slug} onChange={(event) => setSlug(event.target.value)} required />
+        <input
+          className="input"
+          value={slug}
+          onChange={(event) =>
+            setSlug(
+              event.target.value
+                .toLowerCase()
+                .replace(/[^a-z0-9-]/g, "-")
+                .replace(/-{2,}/g, "-")
+            )
+          }
+          required
+        />
       </label>
 
       <label className="field">
@@ -88,7 +104,7 @@ export function CreateCheckoutForm({ accessToken, onCreated }: CreateCheckoutFor
         </label>
       </div>
 
-      <button className="btn btn--primary" disabled={loading} style={{ marginTop: "1rem", width: "100%" }}>
+      <button className="btn btn-primary" disabled={loading} style={{ marginTop: "1rem", width: "100%" }}>
         {loading ? "Criando..." : "Criar checkout"}
       </button>
 

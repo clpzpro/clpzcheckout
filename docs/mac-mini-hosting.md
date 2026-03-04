@@ -11,7 +11,7 @@ Publicar o Cpay para testes externos sem abrir portas do roteador e com controle
 ## 1) Pre-requisitos no Mac mini
 - Docker Desktop instalado.
 - Dominio ativo na Cloudflare.
-- Projeto Supabase criado (somente Auth nesta fase).
+- Banco Postgres para `auth-db` e `core-db` (o script ja sobe local em Docker).
 
 ## 2) Criar tunnel e DNS na Cloudflare
 1. No painel da Cloudflare, crie um Tunnel em Zero Trust.
@@ -27,9 +27,7 @@ Use o comando de deploy abaixo com parametros.
 ```bash
 npm run macmini:deploy -- \
   --domain cpay-test.seudominio.com \
-  --tunnel-token <CF_TUNNEL_TOKEN> \
-  --supabase-url https://<seu-projeto>.supabase.co \
-  --supabase-anon-key <SUPABASE_ANON_KEY>
+  --tunnel-token <CF_TUNNEL_TOKEN>
 ```
 Esse comando gera/atualiza `infra/.env.macmini`, cria senha forte de banco automaticamente e sobe tudo.
 
@@ -43,7 +41,7 @@ No Cloudflare Access:
 - Deixe o firewall do macOS ativo.
 - Atualize imagens Docker periodicamente (`docker compose pull`).
 - Nunca compartilhe `CF_TUNNEL_TOKEN` e credenciais de banco.
-- Use usuarios de teste no Supabase, nunca dados reais.
+- Use usuarios de teste, nunca dados reais.
 
 ## Comandos uteis
 ```bash

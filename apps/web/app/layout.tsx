@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Cpay",
-  description: "Plataforma SaaS para checkout customizavel"
+  title: "clpzcheckout",
+  description: "Painel de checkout"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 import { CreateCheckoutForm } from "./create-checkout-form";
 
@@ -15,127 +14,136 @@ interface CheckoutItem {
   created_at: string;
 }
 
+interface ProfileItem {
+  id: string;
+  email: string;
+  username: string;
+}
+
 export function DashboardClient() {
-  const supabase = getSupabaseBrowserClient();
-  const [token, setToken] = useState<string | null>(null);
+  const router = useRouter();
+
+  const [profile, setProfile] = useState<ProfileItem | null>(null);
   const [checkouts, setCheckouts] = useState<CheckoutItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadCheckouts = useCallback(async () => {
-    if (!supabase) {
-      setError("Configure o Supabase no .env.local para acessar o dashboard.");
-      setLoading(false);
-      return;
-    }
-
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
     setError(null);
 
-    const { data } = await supabase.auth.getSession();
-    const accessToken = data.session?.access_token;
+    const [profileResponse, checkoutResponse] = await Promise.all([
+      fetch(`${getApiBaseUrl()}/v1/auth/me`, {
+        credentials: "include"
+      }),
+      fetch(`${getApiBaseUrl()}/v1/checkouts`, {
+        credentials: "include"
+      })
+    ]);
 
-    if (!accessToken) {
-      setToken(null);
-      setCheckouts([]);
+    if (profileResponse.status === 401 || checkoutResponse.status === 401) {
+      setLoading(false);
+      router.replace("/login");
+      return;
+    }
+
+    if (!profileResponse.ok || !checkoutResponse.ok) {
+      setError("Falha ao carregar dados do dashboard.");
       setLoading(false);
       return;
     }
 
-    setToken(accessToken);
+    const profilePayload = (await profileResponse.json()) as { user?: ProfileItem };
+    const checkoutPayload = (await checkoutResponse.json()) as { items?: CheckoutItem[] };
 
-    const response = await fetch(`${getApiBaseUrl()}/v1/checkouts`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-
-    if (!response.ok) {
-      setError("Falha ao carregar checkouts");
-      setLoading(false);
-      return;
-    }
-
-    const payload = await response.json();
-    setCheckouts(payload.items ?? []);
+    setProfile(profilePayload.user ?? null);
+    setCheckouts(checkoutPayload.items ?? []);
     setLoading(false);
-  }, [supabase]);
+  }, [router]);
 
   useEffect(() => {
-    loadCheckouts().catch(() => {
-      setError("Erro ao carregar dashboard");
+    loadDashboard().catch(() => {
+      setError("Erro inesperado ao carregar dashboard.");
       setLoading(false);
     });
-  }, [loadCheckouts]);
+  }, [loadDashboard]);
 
   async function signOut() {
-    if (!supabase) {
-      window.location.href = "/login";
-      return;
+    try {
+      await fetch(`${getApiBaseUrl()}/v1/auth/logout`, {
+        method: "POST",
+        credentials: "include"
+      });
+    } finally {
+      router.replace("/login");
     }
-
-    await supabase.auth.signOut();
-    window.location.href = "/login";
   }
 
   if (loading) {
     return (
-      <section className="auth-layout">
-        <article className="dashboard-card">
-          <h1>Carregando dashboard...</h1>
-        </article>
-      </section>
-    );
-  }
-
-  if (!token) {
-    return (
-      <section className="auth-layout">
-        <article className="dashboard-card">
-          <h1>Sessao invalida</h1>
-          <p>Faca login novamente para gerenciar seus checkouts.</p>
-          <div style={{ marginTop: "1rem" }}>
-            <Link href="/login" className="btn btn--primary">
-              Ir para login
-            </Link>
-          </div>
-        </article>
+      <section className="screen dashboard-screen">
+        <div className="dashboard-shell">
+          <article className="panel">
+            <h1>Carregando dashboard...</h1>
+          </article>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="auth-layout">
-      <article className="dashboard-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+    <section className="screen dashboard-screen">
+      <div className="dashboard-shell">
+        <header className="topbar panel">
           <div>
-            <p className="tag">Painel Cpay</p>
-            <h1>Seus checkouts</h1>
+            <p className="brand-pill">CLPZ CHECKOUT</p>
+            <h1>Painel</h1>
+            <p className="subtle">
+              {profile?.username ? `@${profile.username}` : profile?.email ?? "Sem usuario"}
+            </p>
           </div>
 
-          <button className="btn btn--ghost" onClick={signOut}>
+          <button className="btn btn-ghost" onClick={signOut}>
             Sair
           </button>
-        </div>
+        </header>
 
-        <div className="dashboard-grid" style={{ marginTop: "1rem" }}>
-          <CreateCheckoutForm accessToken={token} onCreated={loadCheckouts} />
+        {error ? (
+          <article className="panel">
+            <p className="error">{error}</p>
+          </article>
+        ) : null}
 
-          <section>
-            <h2>Lista</h2>
-            {error ? <p className="error">{error}</p> : null}
+        <main className="dashboard-grid">
+          <article className="panel">
+            <CreateCheckoutForm onCreated={loadDashboard} />
+          </article>
+
+          <article className="panel">
+            <div className="list-header">
+              <h2>Checkouts criados</h2>
+              <span>{checkouts.length}</span>
+            </div>
+
             <ul className="checkout-list">
               {checkouts.map((checkout) => (
                 <li key={checkout.id} className="checkout-item">
                   <strong>{checkout.name}</strong>
-                  <p>/{checkout.slug}</p>
-                  <p>{checkout.gateway_provider === "none" ? "SEM GATEWAY" : checkout.gateway_provider.toUpperCase()} - {checkout.currency}</p>
+                  <p>URL: /checkout/{checkout.slug}</p>
+                  <p>Gateway: {checkout.gateway_provider === "none" ? "sem gateway (MVP)" : checkout.gateway_provider}</p>
+                  <p>Moeda: {checkout.currency}</p>
                 </li>
               ))}
-              {checkouts.length === 0 ? <p>Nenhum checkout criado ainda.</p> : null}
             </ul>
-          </section>
-        </div>
-      </article>
+
+            {checkouts.length === 0 ? (
+              <p className="subtle" style={{ marginTop: "1rem" }}>
+                Nenhum checkout criado. Crie o primeiro no painel ao lado.
+              </p>
+            ) : null}
+          </article>
+        </main>
+      </div>
     </section>
   );
 }

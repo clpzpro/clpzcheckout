@@ -1,11 +1,11 @@
-# Cpay
+# clpzcheckout
 
 Base inicial do SaaS de checkout com bancos separados para autenticacao e dados de negocio.
 Nesta fase, nenhum gateway real de pagamento esta habilitado.
 
 ## Projeto
-- `apps/web`: Front-end Next.js (landing, login, cadastro, dashboard, checkout template)
-- `apps/api`: API Fastify com JWT e gerenciamento de checkouts
+- `apps/web`: Front-end Next.js (login, cadastro, dashboard, checkout template)
+- `apps/api`: API Fastify com autenticacao por cookie HTTP-only/JWT e gerenciamento de checkouts
 - `packages/contracts`: validacoes e tipos compartilhados
 - `infra`: bancos locais e schemas SQL
 
@@ -24,9 +24,12 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.local.example apps/web/.env.local
 ```
 
-Preencha os dados reais do Supabase em:
-- `apps/api/.env`
-- `apps/web/.env.local`
+Defina no minimo:
+- `apps/api/.env`: `AUTH_DB_URL`, `CORE_DB_URL`, `JWT_SECRET`, `APP_ORIGIN`
+- `apps/web/.env.local`: `NEXT_PUBLIC_API_URL`
+
+Opcional no backend:
+- `APP_ORIGINS` para liberar origens adicionais (separadas por virgula), ex.: `https://www.clpzcheckout.cloud`
 
 ## 3) Instalar dependencias
 ```bash
@@ -40,6 +43,10 @@ npm run dev
 
 ## Endpoints principais
 - `GET /health`
+- `POST /v1/auth/check-availability`
+- `POST /v1/auth/register`
+- `POST /v1/auth/login`
+- `POST /v1/auth/logout`
 - `GET /v1/auth/me`
 - `GET /v1/checkouts`
 - `POST /v1/checkouts`
@@ -57,7 +64,5 @@ Resumo:
 ```bash
 npm run macmini:deploy -- \
   --domain cpay-test.seudominio.com \
-  --tunnel-token <CF_TUNNEL_TOKEN> \
-  --supabase-url https://<seu-projeto>.supabase.co \
-  --supabase-anon-key <SUPABASE_ANON_KEY>
+  --tunnel-token <CF_TUNNEL_TOKEN>
 ```

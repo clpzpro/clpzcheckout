@@ -6,11 +6,13 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
   const { slug } = await params;
 
   return (
-    <main className="auth-layout">
-      <section className="checkout-card">
-        <p className="tag">Cpay Checkout</p>
+    <main className="screen auth-screen">
+      <div className="screen-noise" />
+
+      <section className="checkout-template-card">
+        <p className="brand-pill">CHECKOUT</p>
         <h1>/{slug}</h1>
-        <p>
+        <p className="subtle" style={{ marginTop: "0.8rem" }}>
           Esse e o template padrao do checkout. As variacoes ficam concentradas em cores, logo,
           textos e campos opcionais, mantendo consistencia visual e alta conversao.
           Nesta fase o pagamento real ainda nao esta habilitado.
@@ -32,7 +34,7 @@ export default async function CheckoutPage({ params }: CheckoutPageProps) {
             <input className="input" placeholder="0000 0000 0000 0000" />
           </label>
 
-          <button className="btn btn--primary" type="button">
+          <button className="btn btn-primary" type="button">
             Pagamento em breve
           </button>
         </form>

@@ -1,14 +1,13 @@
 import fp from "fastify-plugin";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { env } from "../config/env.js";
+import { verifyAuthToken } from "../lib/auth-token.js";
 
 declare module "fastify" {
   interface FastifyRequest {
     user?: {
       id: string;
-      email?: string;
-      raw: JWTPayload;
+      email: string;
+      username: string;
     };
   }
 
@@ -17,37 +16,44 @@ declare module "fastify" {
   }
 }
 
-const jwks = createRemoteJWKSet(new URL(env.SUPABASE_JWKS_URL));
+function extractBearerToken(authorization?: string) {
+  if (!authorization?.startsWith("Bearer ")) {
+    return null;
+  }
+
+  return authorization.replace("Bearer ", "").trim();
+}
 
 export const authPlugin = fp(async (app) => {
   app.decorate("authenticate", async (request: FastifyRequest, reply: FastifyReply) => {
-    const authHeader = request.headers.authorization;
+    const bearerToken = extractBearerToken(request.headers.authorization);
+    const cookieToken = request.cookies.cpay_token;
+    const token = bearerToken ?? cookieToken;
 
-    if (!authHeader?.startsWith("Bearer ")) {
-      reply.code(401).send({ message: "Missing bearer token" });
+    if (!token) {
+      reply.code(401).send({ message: "Nao autenticado." });
       return;
     }
 
-    const token = authHeader.replace("Bearer ", "").trim();
-
     try {
-      const { payload } = await jwtVerify(token, jwks, {
-        issuer: env.SUPABASE_ISSUER,
-        audience: env.SUPABASE_AUDIENCE
-      });
+      const { payload } = await verifyAuthToken(token);
 
-      if (!payload.sub) {
-        reply.code(401).send({ message: "Invalid token payload" });
+      if (
+        !payload.sub ||
+        typeof payload.email !== "string" ||
+        typeof payload.username !== "string"
+      ) {
+        reply.code(401).send({ message: "Token invalido." });
         return;
       }
 
       request.user = {
         id: payload.sub,
-        email: typeof payload.email === "string" ? payload.email : undefined,
-        raw: payload
+        email: payload.email,
+        username: payload.username
       };
     } catch {
-      reply.code(401).send({ message: "Invalid or expired token" });
+      reply.code(401).send({ message: "Token invalido ou expirado." });
     }
   });
 });
