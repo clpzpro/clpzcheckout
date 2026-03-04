@@ -4,6 +4,11 @@ import { z } from "zod";
 import { env } from "../../config/env.js";
 import { signAuthToken } from "../../lib/auth-token.js";
 import { authDb } from "../../lib/db/auth-db.js";
+import {
+  getCaptchaClientKey,
+  issueCaptchaForClient,
+  verifyCaptchaForClient
+} from "./captcha.service.js";
 
 const usernameSchema = z
   .string()
@@ -19,7 +24,9 @@ const checkAvailabilitySchema = z.object({
 const registerSchema = z.object({
   email: z.string().trim().email(),
   username: usernameSchema,
-  password: z.string().min(8).max(120)
+  password: z.string().min(8).max(120),
+  captchaId: z.string().uuid(),
+  captchaAnswer: z.string().trim().min(1).max(24)
 });
 
 const loginSchema = z.object({
@@ -38,6 +45,26 @@ const authCookieOptions = {
 };
 
 export async function authRoutes(app: FastifyInstance) {
+  app.get("/v1/auth/captcha/challenge", async (request, reply) => {
+    const clientKey = getCaptchaClientKey(request);
+    const challengeResult = issueCaptchaForClient(clientKey);
+
+    if (challengeResult.status === "locked") {
+      return reply.code(429).send({
+        message: "Muitas tentativas. Aguarde 5 minutos para tentar novamente.",
+        code: "CAPTCHA_LOCKED",
+        lockedUntil: challengeResult.lockedUntil
+      });
+    }
+
+    return {
+      challengeId: challengeResult.challengeId,
+      prompt: challengeResult.prompt,
+      attemptsLeft: challengeResult.attemptsLeft,
+      expiresAt: challengeResult.expiresAt
+    };
+  });
+
   app.post("/v1/auth/check-availability", async (request, reply) => {
     const parsed = checkAvailabilitySchema.safeParse(request.body);
 
@@ -79,6 +106,28 @@ export async function authRoutes(app: FastifyInstance) {
 
     const email = parsed.data.email.trim().toLowerCase();
     const username = parsed.data.username.trim().toLowerCase();
+    const clientKey = getCaptchaClientKey(request);
+    const captchaResult = verifyCaptchaForClient(
+      clientKey,
+      parsed.data.captchaId,
+      parsed.data.captchaAnswer
+    );
+
+    if (captchaResult.status === "locked") {
+      return reply.code(429).send({
+        message: "Muitas tentativas no captcha. Aguarde 5 minutos.",
+        code: "CAPTCHA_LOCKED",
+        lockedUntil: captchaResult.lockedUntil
+      });
+    }
+
+    if (captchaResult.status === "invalid") {
+      return reply.code(400).send({
+        message: "Captcha invalido.",
+        code: "CAPTCHA_INVALID",
+        attemptsLeft: captchaResult.attemptsLeft
+      });
+    }
 
     const conflictCheck = await authDb.query(
       `
