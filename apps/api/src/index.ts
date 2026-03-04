@@ -10,13 +10,23 @@ import { ensureAuthSchema } from "./lib/db/ensure-auth-schema.js";
 
 function buildAllowedOrigins() {
   const base = new Set<string>();
-  base.add(env.APP_ORIGIN);
+
+  function addOrigin(rawOrigin: string) {
+    try {
+      const normalized = new URL(rawOrigin).origin;
+      base.add(normalized);
+    } catch {
+      // ignora origin invalida
+    }
+  }
+
+  addOrigin(env.APP_ORIGIN);
 
   if (env.APP_ORIGINS) {
     for (const item of env.APP_ORIGINS.split(",")) {
       const trimmed = item.trim();
       if (trimmed) {
-        base.add(trimmed);
+        addOrigin(trimmed);
       }
     }
   }
@@ -27,11 +37,11 @@ function buildAllowedOrigins() {
 
       if (url.hostname.startsWith("www.")) {
         url.hostname = url.hostname.replace(/^www\./, "");
-        base.add(url.toString().replace(/\/$/, ""));
+        base.add(url.origin);
       } else {
         const withWww = new URL(origin);
         withWww.hostname = `www.${withWww.hostname}`;
-        base.add(withWww.toString().replace(/\/$/, ""));
+        base.add(withWww.origin);
       }
     } catch {
       // ignora origin invalida

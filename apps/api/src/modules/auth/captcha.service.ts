@@ -3,11 +3,14 @@ import type { FastifyRequest } from "fastify";
 
 const CAPTCHA_MAX_ATTEMPTS = 3;
 const CAPTCHA_LOCK_MS = 5 * 60 * 1000;
-const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+const CAPTCHA_TTL_MS = 2 * 60 * 1000;
+const CAPTCHA_CODE_LENGTH = 6;
+const CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 interface CaptchaChallengeState {
   id: string;
   prompt: string;
+  displayText: string;
   answer: string;
   expiresAt: number;
 }
@@ -29,6 +32,7 @@ type CaptchaIssueResult =
       status: "ok";
       challengeId: string;
       prompt: string;
+      displayText: string;
       attemptsLeft: number;
       expiresAt: number;
     };
@@ -60,18 +64,24 @@ export function getCaptchaClientKey(request: FastifyRequest) {
   return `${ip}|${userAgent}`;
 }
 
-function randomOperationChallenge() {
-  const a = randomInt(5, 19);
-  const b = randomInt(2, 10);
-  const operation = randomInt(0, 2) === 0 ? "-" : "+";
+function createCaptchaCode() {
+  let code = "";
 
-  const left = operation === "-" ? Math.max(a, b) : a;
-  const right = operation === "-" ? Math.min(a, b) : b;
-  const answer = operation === "+" ? left + right : left - right;
+  for (let index = 0; index < CAPTCHA_CODE_LENGTH; index += 1) {
+    const randomIndex = randomInt(0, CAPTCHA_ALPHABET.length);
+    code += CAPTCHA_ALPHABET[randomIndex];
+  }
+
+  return code;
+}
+
+function randomTextChallenge() {
+  const code = createCaptchaCode();
 
   return {
-    prompt: `Resolva: ${left} ${operation} ${right}`,
-    answer: String(answer)
+    prompt: "Digite o codigo de verificacao exibido.",
+    displayText: code.split("").join(" "),
+    answer: code
   };
 }
 
@@ -106,10 +116,11 @@ export function issueCaptchaForClient(clientKey: string): CaptchaIssueResult {
     };
   }
 
-  const challengeDefinition = randomOperationChallenge();
+  const challengeDefinition = randomTextChallenge();
   const challenge: CaptchaChallengeState = {
     id: randomUUID(),
     prompt: challengeDefinition.prompt,
+    displayText: challengeDefinition.displayText,
     answer: challengeDefinition.answer,
     expiresAt: now + CAPTCHA_TTL_MS
   };
@@ -120,6 +131,7 @@ export function issueCaptchaForClient(clientKey: string): CaptchaIssueResult {
     status: "ok",
     challengeId: challenge.id,
     prompt: challenge.prompt,
+    displayText: challenge.displayText,
     attemptsLeft: CAPTCHA_MAX_ATTEMPTS - state.failedAttempts,
     expiresAt: challenge.expiresAt
   };
@@ -170,7 +182,7 @@ export function verifyCaptchaForClient(
     return registerFailure(state, now);
   }
 
-  const normalizedAnswer = answerInput.trim();
+  const normalizedAnswer = answerInput.replace(/\s+/g, "").trim().toUpperCase();
 
   if (normalizedAnswer !== challenge.answer) {
     return registerFailure(state, now);

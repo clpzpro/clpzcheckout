@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { getApiBaseUrl } from "@/lib/api-base-url";
 
 type Mode = "login" | "register";
@@ -14,6 +14,7 @@ interface AuthFormProps {
 interface CaptchaChallengePayload {
   challengeId: string;
   prompt: string;
+  displayText?: string;
   attemptsLeft: number;
   expiresAt: number;
 }
@@ -42,7 +43,7 @@ function parseLockedUntil(raw: unknown) {
   return Date.now() + CAPTCHA_LOCK_FALLBACK_MS;
 }
 
-function formatLockRemaining(ms: number) {
+function formatClock(ms: number) {
   const safeMs = Math.max(0, ms);
   const totalSeconds = Math.ceil(safeMs / 1000);
   const minutes = Math.floor(totalSeconds / 60)
@@ -67,12 +68,14 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaLockedUntil, setCaptchaLockedUntil] = useState<number | null>(null);
+  const [humanConfirmed, setHumanConfirmed] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [now, setNow] = useState(Date.now());
+  const [heroPointer, setHeroPointer] = useState({ x: 0.5, y: 0.5 });
 
   const apiBaseUrl = getApiBaseUrl();
 
@@ -92,7 +95,24 @@ export function AuthForm({ mode }: AuthFormProps) {
     return Math.max(0, captchaLockedUntil - now);
   }, [captchaLockedUntil, now]);
 
+  const captchaExpiresInMs = useMemo(() => {
+    if (!captcha?.expiresAt) {
+      return 0;
+    }
+
+    return Math.max(0, captcha.expiresAt - now);
+  }, [captcha, now]);
+
   const isCaptchaLocked = lockRemainingMs > 0;
+
+  const visualStyle = useMemo(
+    () =>
+      ({
+        "--pointer-x": heroPointer.x.toFixed(4),
+        "--pointer-y": heroPointer.y.toFixed(4)
+      }) as CSSProperties,
+    [heroPointer]
+  );
 
   const fetchCaptchaChallenge = useCallback(async () => {
     if (isLogin) {
@@ -107,12 +127,13 @@ export function AuthForm({ mode }: AuthFormProps) {
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | (CaptchaChallengePayload & { code?: string; lockedUntil?: number | string; message?: string })
+        | (CaptchaChallengePayload & { code?: string; lockedUntil?: number | string })
         | null;
 
       if (response.status === 429) {
         setCaptcha(null);
         setCaptchaLockedUntil(parseLockedUntil(payload?.lockedUntil));
+        setHumanConfirmed(false);
         return;
       }
 
@@ -123,9 +144,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       setCaptcha(payload);
       setCaptchaAnswer("");
       setCaptchaLockedUntil(null);
+      setHumanConfirmed(false);
       setError(null);
     } catch {
-      setError("Nao foi possivel carregar o captcha. Atualize a pagina.");
+      setCaptcha(null);
+      setError("Nao foi possivel carregar a verificacao de seguranca. Atualize a pagina.");
     } finally {
       setCaptchaLoading(false);
     }
@@ -150,11 +173,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   }, [fetchCaptchaChallenge, isLogin]);
 
   useEffect(() => {
-    if (isLogin) {
-      return;
-    }
-
-    if (!captchaLockedUntil) {
+    if (isLogin || !captchaLockedUntil) {
       return;
     }
 
@@ -163,6 +182,16 @@ export function AuthForm({ mode }: AuthFormProps) {
       void fetchCaptchaChallenge();
     }
   }, [captchaLockedUntil, fetchCaptchaChallenge, isLogin, lockRemainingMs]);
+
+  useEffect(() => {
+    if (isLogin || !captcha || captchaLoading || isCaptchaLocked) {
+      return;
+    }
+
+    if (captchaExpiresInMs === 0) {
+      void fetchCaptchaChallenge();
+    }
+  }, [captcha, captchaExpiresInMs, captchaLoading, fetchCaptchaChallenge, isCaptchaLocked, isLogin]);
 
   async function checkAvailability(nextEmail: string, nextUsername: string) {
     const response = await fetch(`${apiBaseUrl}/v1/auth/check-availability`, {
@@ -232,8 +261,12 @@ export function AuthForm({ mode }: AuthFormProps) {
 
       if (isCaptchaLocked) {
         throw new Error(
-          `Captcha bloqueado temporariamente. Aguarde ${formatLockRemaining(lockRemainingMs)}.`
+          `Verificacao bloqueada temporariamente. Aguarde ${formatClock(lockRemainingMs)}.`
         );
+      }
+
+      if (!humanConfirmed) {
+        throw new Error("Confirme a verificacao de seguranca para continuar.");
       }
 
       const normalizedEmail = email.trim().toLowerCase();
@@ -248,7 +281,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       }
 
       if (!captcha?.challengeId) {
-        throw new Error("Captcha nao carregado. Atualize o captcha e tente novamente.");
+        throw new Error("Verificacao nao carregada. Atualize o captcha e tente novamente.");
+      }
+
+      if (!captchaAnswer.trim()) {
+        throw new Error("Digite o codigo de verificacao.");
       }
 
       await checkAvailability(normalizedEmail, normalizedUsername);
@@ -280,13 +317,14 @@ export function AuthForm({ mode }: AuthFormProps) {
       if (response.status === 429 && payload?.code === "CAPTCHA_LOCKED") {
         setCaptchaLockedUntil(parseLockedUntil(payload.lockedUntil));
         setCaptcha(null);
-        throw new Error("Captcha bloqueado por 5 minutos apos 3 tentativas invalidas.");
+        setHumanConfirmed(false);
+        throw new Error("Verificacao bloqueada por 5 minutos apos 3 erros consecutivos.");
       }
 
       if (response.status === 400 && payload?.code === "CAPTCHA_INVALID") {
         await fetchCaptchaChallenge();
         throw new Error(
-          `Captcha invalido. Tentativas restantes: ${Math.max(0, payload.attemptsLeft ?? 0)}.`
+          `Codigo invalido. Tentativas restantes: ${Math.max(0, payload.attemptsLeft ?? 0)}.`
         );
       }
 
@@ -315,26 +353,46 @@ export function AuthForm({ mode }: AuthFormProps) {
 
         <nav className="auth-nav-actions" aria-label="Navegacao de autenticacao">
           <Link href="/login" className={`auth-nav-button ${isLogin ? "active" : ""}`}>
-            Log in
+            Entrar
           </Link>
-          <Link href="/register" className={`auth-nav-button auth-nav-primary ${!isLogin ? "active" : ""}`}>
-            Sign up
+          <Link
+            href="/register"
+            className={`auth-nav-button auth-nav-primary ${!isLogin ? "active" : ""}`}
+          >
+            Criar conta
           </Link>
         </nav>
       </header>
 
       <div className="auth-layout">
-        <aside className="auth-visual" aria-hidden="true">
+        <aside
+          className="auth-visual"
+          aria-hidden="true"
+          style={visualStyle}
+          onPointerMove={(event) => {
+            const target = event.currentTarget;
+            const rect = target.getBoundingClientRect();
+            const nextX = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+            const nextY = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+            setHeroPointer({ x: nextX, y: nextY });
+          }}
+          onPointerLeave={() => {
+            setHeroPointer({ x: 0.5, y: 0.5 });
+          }}
+        >
           <div className="auth-visual-gradient" />
-          <div className="brand-bubble brand-bubble-hero" />
+          <div className="auth-visual-glow" />
+          <div className="hero-orb-shell">
+            <div className="brand-bubble brand-bubble-hero" />
+          </div>
         </aside>
 
         <form className="auth-panel" onSubmit={onSubmit}>
-          <h1>{isLogin ? "Log in" : "Sign up"}</h1>
+          <h1>{isLogin ? "Entrar" : "Criar conta"}</h1>
           <p className="auth-subtitle">
             {isLogin
               ? "Acesse seu painel com email ou username."
-              : "Crie sua conta com username, email e senha para entrar no dashboard."}
+              : "Cadastre username, email e senha para abrir seu dashboard."}
           </p>
 
           {isLogin ? (
@@ -402,9 +460,9 @@ export function AuthForm({ mode }: AuthFormProps) {
           </label>
 
           {!isLogin ? (
-            <section className="captcha-box" aria-live="polite">
-              <div className="captcha-header">
-                <span className="captcha-tag">Captcha local</span>
+            <section className="captcha-card" aria-live="polite">
+              <div className="captcha-headline">
+                <span className="captcha-tag">Verificacao de seguranca</span>
                 <button
                   type="button"
                   className="captcha-refresh"
@@ -413,34 +471,56 @@ export function AuthForm({ mode }: AuthFormProps) {
                   }}
                   disabled={captchaLoading || loading || isCaptchaLocked}
                 >
-                  Atualizar
+                  Novo codigo
                 </button>
               </div>
 
-              <p className="captcha-prompt">
-                {isCaptchaLocked
-                  ? `Novo desafio disponivel em ${formatLockRemaining(lockRemainingMs)}.`
-                  : captcha?.prompt ?? "Carregando desafio..."}
-              </p>
+              <label className="captcha-checkline">
+                <input
+                  type="checkbox"
+                  className="captcha-toggle"
+                  checked={humanConfirmed}
+                  onChange={(event) => setHumanConfirmed(event.target.checked)}
+                  disabled={isCaptchaLocked || captchaLoading || !captcha}
+                />
+                <span>Confirmo que sou uma pessoa real</span>
+              </label>
+
+              <div className={`captcha-display ${humanConfirmed && captcha ? "ready" : ""}`}>
+                <span>
+                  {isCaptchaLocked
+                    ? "BLOQUEADO"
+                    : humanConfirmed && captcha
+                      ? captcha.displayText ?? captcha.prompt
+                      : "••••••"}
+                </span>
+              </div>
 
               <label className="field captcha-field">
-                Resposta
+                Codigo
                 <input
                   className="input"
                   type="text"
-                  placeholder="Digite o resultado"
+                  placeholder="Digite o codigo mostrado"
                   value={captchaAnswer}
-                  onChange={(event) => setCaptchaAnswer(event.target.value)}
+                  onChange={(event) => setCaptchaAnswer(event.target.value.toUpperCase())}
                   required
-                  disabled={captchaLoading || isCaptchaLocked || loading || !captcha}
+                  disabled={captchaLoading || isCaptchaLocked || loading || !captcha || !humanConfirmed}
                 />
               </label>
 
-              <p className="subtle captcha-meta">
-                {isCaptchaLocked
-                  ? "3 erros seguidos detectados. Bloqueio temporario ativo."
-                  : `Tentativas restantes: ${Math.max(0, captcha?.attemptsLeft ?? 0)}`}
-              </p>
+              <div className="captcha-meta-grid subtle">
+                <p>
+                  {isCaptchaLocked
+                    ? `Novo desafio em ${formatClock(lockRemainingMs)}`
+                    : `Tentativas restantes: ${Math.max(0, captcha?.attemptsLeft ?? 0)}`}
+                </p>
+                <p>
+                  {isCaptchaLocked
+                    ? "Bloqueio ativo por seguranca"
+                    : `Expira em ${formatClock(captchaExpiresInMs)}`}
+                </p>
+              </div>
             </section>
           ) : null}
 

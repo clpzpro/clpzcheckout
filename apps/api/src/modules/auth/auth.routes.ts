@@ -60,6 +60,7 @@ export async function authRoutes(app: FastifyInstance) {
     return {
       challengeId: challengeResult.challengeId,
       prompt: challengeResult.prompt,
+      displayText: challengeResult.displayText,
       attemptsLeft: challengeResult.attemptsLeft,
       expiresAt: challengeResult.expiresAt
     };
