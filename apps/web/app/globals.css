@@ -56,12 +56,23 @@ p {
   padding: 1rem;
 }
 
-.auth-topbar {
+.auth-topbar-shell {
   width: min(1240px, 100%);
   margin: 0 auto;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  backdrop-filter: blur(6px);
+}
+
+.auth-topbar {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.8rem;
+  min-height: 64px;
+  padding: 0.65rem 0.95rem;
 }
 
 .brand-bubble {
@@ -90,10 +101,42 @@ p {
   height: 38px;
 }
 
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.58rem;
+  min-width: 190px;
+}
+
+.auth-brand-mark {
+  flex: 0 0 auto;
+}
+
+.auth-brand-text {
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #212c40;
+}
+
 .brand-bubble-hero {
   width: min(70vw, 400px);
   aspect-ratio: 1;
   animation: bubbleFloat 7.2s ease-in-out infinite;
+}
+
+.auth-topbar-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.95rem;
+  flex: 1;
+}
+
+.auth-menu-item {
+  color: #57647a;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .auth-nav-actions {
@@ -534,6 +577,10 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .auth-topbar-menu {
+    gap: 0.72rem;
+  }
+
   .auth-visual {
     min-height: 260px;
     border-bottom: 1px solid var(--line);
@@ -555,6 +602,27 @@ select:focus {
 @media (max-width: 640px) {
   .auth-screen {
     padding: 0.8rem;
+  }
+
+  .auth-topbar-shell {
+    border-radius: 14px;
+  }
+
+  .auth-topbar {
+    min-height: 58px;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .auth-topbar-menu {
+    display: none;
+  }
+
+  .auth-brand {
+    min-width: auto;
+  }
+
+  .auth-brand-text {
+    display: none;
   }
 
   .brand-bubble-small {

@@ -348,20 +348,31 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <section className="screen auth-screen">
-      <header className="auth-topbar">
-        <Link href="/login" className="brand-bubble brand-bubble-small" aria-label="clpzcheckout" />
+      <header className="auth-topbar-shell">
+        <div className="auth-topbar">
+          <Link href="/login" className="auth-brand" aria-label="clpzcheckout">
+            <span className="brand-bubble brand-bubble-small auth-brand-mark" />
+            <span className="auth-brand-text">clpzcheckout</span>
+          </Link>
 
-        <nav className="auth-nav-actions" aria-label="Navegacao de autenticacao">
-          <Link href="/login" className={`auth-nav-button ${isLogin ? "active" : ""}`}>
-            Entrar
-          </Link>
-          <Link
-            href="/register"
-            className={`auth-nav-button auth-nav-primary ${!isLogin ? "active" : ""}`}
-          >
-            Criar conta
-          </Link>
-        </nav>
+          <nav className="auth-topbar-menu" aria-label="Menu principal">
+            <span className="auth-menu-item">Produto</span>
+            <span className="auth-menu-item">Seguranca</span>
+            <span className="auth-menu-item">Status</span>
+          </nav>
+
+          <nav className="auth-nav-actions" aria-label="Navegacao de autenticacao">
+            <Link href="/login" className={`auth-nav-button ${isLogin ? "active" : ""}`}>
+              Entrar
+            </Link>
+            <Link
+              href="/register"
+              className={`auth-nav-button auth-nav-primary ${!isLogin ? "active" : ""}`}
+            >
+              Criar conta
+            </Link>
+          </nav>
+        </div>
       </header>
 
       <div className="auth-layout">

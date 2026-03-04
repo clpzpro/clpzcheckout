@@ -1,5 +1,5 @@
 import { compare, hash } from "bcryptjs";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { signAuthToken } from "../../lib/auth-token.js";
@@ -39,13 +39,84 @@ const authCookie = "cpay_token";
 const authCookieOptions = {
   path: "/",
   httpOnly: true,
-  sameSite: "lax" as const,
+  sameSite: "strict" as const,
   secure: env.NODE_ENV === "production",
   maxAge: 60 * 60 * 24 * 7
 };
 
+const authRateLimits = {
+  captchaChallenge: { limit: 15, windowMs: 60_000 },
+  checkAvailability: { limit: 24, windowMs: 60_000 },
+  register: { limit: 8, windowMs: 10 * 60_000 },
+  login: { limit: 12, windowMs: 10 * 60_000 }
+} as const;
+
+interface RateLimitState {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitState>();
+
+function consumeRateLimit(key: string, max: number, windowMs: number) {
+  const now = Date.now();
+  const current = rateLimitStore.get(key);
+
+  if (!current || current.resetAt <= now) {
+    const next: RateLimitState = {
+      count: 1,
+      resetAt: now + windowMs
+    };
+
+    rateLimitStore.set(key, next);
+    return {
+      blocked: false,
+      remaining: Math.max(0, max - next.count),
+      retryAfterSec: Math.ceil(windowMs / 1000)
+    };
+  }
+
+  current.count += 1;
+  const retryAfterSec = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+  const blocked = current.count > max;
+
+  return {
+    blocked,
+    remaining: Math.max(0, max - current.count),
+    retryAfterSec
+  };
+}
+
+function enforceAuthRateLimit(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  scope: keyof typeof authRateLimits
+) {
+  const settings = authRateLimits[scope];
+  const fingerprint = getCaptchaClientKey(request);
+  const result = consumeRateLimit(`${scope}:${fingerprint}`, settings.limit, settings.windowMs);
+
+  reply.header("X-RateLimit-Limit", String(settings.limit));
+  reply.header("X-RateLimit-Remaining", String(result.remaining));
+
+  if (!result.blocked) {
+    return true;
+  }
+
+  reply.header("Retry-After", String(result.retryAfterSec));
+  reply.code(429).send({
+    message: "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente."
+  });
+
+  return false;
+}
+
 export async function authRoutes(app: FastifyInstance) {
   app.get("/v1/auth/captcha/challenge", async (request, reply) => {
+    if (!enforceAuthRateLimit(request, reply, "captchaChallenge")) {
+      return;
+    }
+
     const clientKey = getCaptchaClientKey(request);
     const challengeResult = issueCaptchaForClient(clientKey);
 
@@ -67,6 +138,10 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/auth/check-availability", async (request, reply) => {
+    if (!enforceAuthRateLimit(request, reply, "checkAvailability")) {
+      return;
+    }
+
     const parsed = checkAvailabilitySchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -99,6 +174,10 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/auth/register", async (request, reply) => {
+    if (!enforceAuthRateLimit(request, reply, "register")) {
+      return;
+    }
+
     const parsed = registerSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -198,6 +277,10 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/auth/login", async (request, reply) => {
+    if (!enforceAuthRateLimit(request, reply, "login")) {
+      return;
+    }
+
     const parsed = loginSchema.safeParse(request.body);
 
     if (!parsed.success) {
@@ -274,7 +357,7 @@ export async function authRoutes(app: FastifyInstance) {
     reply.clearCookie(authCookie, {
       path: "/",
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       secure: env.NODE_ENV === "production"
     });
 
